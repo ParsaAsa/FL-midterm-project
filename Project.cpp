@@ -2,6 +2,7 @@
 #include <vector>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 using namespace std;
 
@@ -28,10 +29,10 @@ public:
     // Attributes
     char from;
     char by;
-    string to;
+    char to;
 
     // Constructor
-    Transition(char a, char b, string c)
+    Transition(char a, char b, char c)
     {
         from = a;
         by = b;
@@ -56,7 +57,18 @@ public:
 class NFA
 {
 public:
+    vector<char> states;
+    vector<Transition> transitions;
+    vector<char> alphabets;
+    char start;
+    vector<char> finlaStates;
+
     NFA() = default;
+    NFA(vector<char> a, vector<char> s, vector<Transition> t, char start, vector<char> f)
+        : alphabets(a), states(s), transitions(t), finlaStates(f)
+    {
+        start = start;
+    }
 };
 class DFA
 {
@@ -64,9 +76,55 @@ public:
     DFA() = default;
 };
 
+bool isCharInVector(const vector<char> &vec, char target)
+{
+    return find(vec.begin(), vec.end(), target) != vec.end();
+}
 NFA RGToNFA(Grammar g)
 {
-    return NFA();
+    vector<Transition> transitions;
+    vector<char> finalStates;
+    vector<char> states;
+    vector<char> alphabets;
+
+    for (Rule i : g.rules)
+    {
+        char from = i.from;
+
+        char by, to;
+
+        if (i.to.size() == 2)
+        {
+            by = i.to[0];
+            to = i.to[1];
+        }
+        else // this sho
+        {
+            by = i.to[0];
+            to = 'F';
+
+            if (by == 'ε' || isCharInVector(g.alphabets, by))
+            {
+                finalStates.push_back(from);
+            }
+        }
+        transitions.push_back(Transition(from, by, to));
+    }
+
+    for (char i : g.variables)
+    {
+        states.push_back(i);
+    }
+    states.push_back('F');
+    finalStates.push_back('F');
+
+    for (char i : g.alphabets)
+    {
+        alphabets.push_back(i);
+    }
+
+    char start = g.start;
+    return NFA(alphabets, states, transitions, start, finalStates);
 }
 
 DFA NFAtoDFA(NFA f)
@@ -124,6 +182,7 @@ int main()
             vector<char> alphabets;
             vector<char> variables;
             char start;
+            vector<Rule> rules;
             getline(cin, temp); // Grammer name(not important) or "# Operation"
 
             if (temp == "# Operation")
@@ -145,9 +204,10 @@ int main()
 
             getline(cin, temp); // Read entire line
 
-            istringstream iss2(temp); // Create string stream from temp
+            iss.clear();
+            iss.str(temp); // Create string stream from temp
 
-            while (iss2 >> ch)
+            while (iss >> ch)
             { // Extract variables one by one
                 variables.push_back(ch);
             }
@@ -155,8 +215,24 @@ int main()
             getline(cin, temp); // # Start
             cin >> start;
             getline(cin, temp); // ignore \n
-
-            getline(cin, temp); //=========
+            getline(cin, temp); // ignore "# Rules"
+            while (true)
+            {
+                char from;
+                cin >> from;
+                if (from == '=')
+                {
+                    getline(cin, temp);
+                    break;
+                }
+                string to;
+                cin >> temp; // ignore '->' sign
+                cin >> to;
+                rules.push_back(Rule(from, to));
+                getline(cin, temp); // ignore \n
+            }
+            Grammar grammar(start, alphabets, variables, rules);
+            NFA nfa = RGToNFA(grammar);
         }
     }
 }
