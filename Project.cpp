@@ -23,16 +23,35 @@ public:
     }
 };
 
+// Determine whether a char is in a vector or not
+bool isCharInVector(const vector<char> &vec, char target)
+{
+    return find(vec.begin(), vec.end(), target) != vec.end();
+}
+
+// Determine whether a Grammar is Left Linear or right linear
+bool isLeftLinear(vector<Rule> rules, vector<char> variables)
+{
+    for (Rule i : rules)
+    {
+        if (isCharInVector(variables, i.to[0]))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 class Transition
 {
 public:
     // Attributes
-    char from;
+    string from;
     char by;
-    char to;
+    string to;
 
     // Constructor
-    Transition(char a, char b, char c)
+    Transition(string a, char b, string c)
     {
         from = a;
         by = b;
@@ -57,17 +76,18 @@ public:
 class NFA
 {
 public:
-    vector<char> states;
+    vector<string> states;
     vector<Transition> transitions;
     vector<char> alphabets;
-    char start;
-    vector<char> finlaStates;
+    string start;
+    string finalState;
 
     NFA() = default;
-    NFA(vector<char> a, vector<char> s, vector<Transition> t, char start, vector<char> f)
-        : alphabets(a), states(s), transitions(t), finlaStates(f)
+    NFA(vector<char> a, vector<string> s, vector<Transition> t, string start, string f)
+        : alphabets(a), states(s), transitions(t)
     {
         start = start;
+        finalState = f;
     }
 };
 class DFA
@@ -76,55 +96,60 @@ public:
     DFA() = default;
 };
 
-bool isCharInVector(const vector<char> &vec, char target)
-{
-    return find(vec.begin(), vec.end(), target) != vec.end();
-}
+// converting a regular grammar to a Non-deterministic Finite Automata
 NFA RGToNFA(Grammar g)
 {
     vector<Transition> transitions;
-    vector<char> finalStates;
-    vector<char> states;
+    string finalState;
+    vector<string> states;
     vector<char> alphabets;
 
-    for (Rule i : g.rules)
-    {
-        char from = i.from;
-
-        char by, to;
-
-        if (i.to.size() == 2)
-        {
-            by = i.to[0];
-            to = i.to[1];
-        }
-        else // this sho
-        {
-            by = i.to[0];
-            to = 'F';
-
-            if (by == 'ε' || isCharInVector(g.alphabets, by))
-            {
-                finalStates.push_back(from);
-            }
-        }
-        transitions.push_back(Transition(from, by, to));
-    }
+    bool p = isLeftLinear(g.rules, g.variables);
 
     for (char i : g.variables)
     {
-        states.push_back(i);
+        states.push_back(string(1, i));
     }
-    states.push_back('F');
-    finalStates.push_back('F');
+    states.push_back("F");
+    finalState = "F";
 
-    for (char i : g.alphabets)
+    for (Rule i : g.rules)
     {
-        alphabets.push_back(i);
+        if (i.to.size() == 1)
+        {
+            transitions.push_back(Transition(string(1, i.from), i.to[0], "F"));
+        }
+        else
+        {
+            int index;
+            if (p)
+            {
+                index = i.to.size() - 1;
+                while (index > 0)
+                {
+                }
+                if (isCharInVector(g.variables, i.to[0]))
+                {
+                }
+                else
+                {
+                }
+            }
+            else
+            {
+                while (index < i.to.size() - 1)
+                {
+                }
+                if (isCharInVector(g.variables, i.to[i.to.size() - 1]))
+                {
+                }
+                else
+                {
+                }
+            }
+        }
     }
-
-    char start = g.start;
-    return NFA(alphabets, states, transitions, start, finalStates);
+    return NFA();
 }
 
 DFA NFAtoDFA(NFA f)
@@ -232,7 +257,6 @@ int main()
                 getline(cin, temp); // ignore \n
             }
             Grammar grammar(start, alphabets, variables, rules);
-            NFA nfa = RGToNFA(grammar);
         }
     }
 }
