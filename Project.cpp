@@ -23,8 +23,14 @@ public:
     }
 };
 
-// Determine whether a char is in a vector or not
+// Determine whether a character is in a vector or not
 bool isCharInVector(const vector<char> &vec, char target)
+{
+    return find(vec.begin(), vec.end(), target) != vec.end();
+}
+
+// Determine whether a string is in a vector or not
+bool isStringInVector(vector<string> &vec, const string &target)
 {
     return find(vec.begin(), vec.end(), target) != vec.end();
 }
@@ -47,11 +53,11 @@ class Transition
 public:
     // Attributes
     string from;
-    char by;
+    string by;
     string to;
 
     // Constructor
-    Transition(string a, char b, string c)
+    Transition(string a, string b, string c)
     {
         from = a;
         by = b;
@@ -80,14 +86,13 @@ public:
     vector<Transition> transitions;
     vector<char> alphabets;
     string start;
-    string finalState;
+    vector<string> finalStates;
 
     NFA() = default;
-    NFA(vector<char> a, vector<string> s, vector<Transition> t, string start, string f)
-        : alphabets(a), states(s), transitions(t)
+    NFA(vector<char> a, vector<string> s, vector<Transition> t, string start, vector<string> f)
+        : alphabets(a), states(s), transitions(t), finalStates(f)
     {
         start = start;
-        finalState = f;
     }
 };
 class DFA
@@ -97,27 +102,38 @@ public:
 };
 
 // converting a regular grammar to a Non-deterministic Finite Automata
-NFA RGToNFA(Grammar g)
+NFA RGtoNFA(Grammar g)
 {
     vector<Transition> transitions;
-    string finalState;
+    vector<string> finalStates;
     vector<string> states;
     vector<char> alphabets;
-
+    string start = string(1, g.start);
     bool p = isLeftLinear(g.rules, g.variables);
 
+    // Adding grammar alphabets to automata alphabets
+    for (char i : g.alphabets)
+    {
+        alphabets.push_back(i);
+    }
+
+    // Adding grammar variables to automata states
     for (char i : g.variables)
     {
         states.push_back(string(1, i));
     }
     states.push_back("F");
-    finalState = "F";
+
+    finalStates.push_back("F");
+
+    string currentState;
 
     for (Rule i : g.rules)
     {
+        currentState = string(1, i.from);
         if (i.to.size() == 1)
         {
-            transitions.push_back(Transition(string(1, i.from), i.to[0], "F"));
+            transitions.push_back(Transition(string(1, i.from), string(1, i.to[0]), "F"));
         }
         else
         {
@@ -127,29 +143,81 @@ NFA RGToNFA(Grammar g)
                 index = i.to.size() - 1;
                 while (index > 0)
                 {
+                    if (isCharInVector(g.variables, i.to[index - 1]))
+                    {
+                        transitions.push_back(Transition(currentState, string(1, i.to[index]), string(1, i.to[index - 1])));
+                        currentState = string(1, i.to[index - 1]);
+                    }
+                    else
+                    {
+                        transitions.push_back(Transition(currentState, string(1, i.to[index]), "State" + to_string(states.size() + 1)));
+                        states.push_back("State" + to_string(states.size() + 1));
+                        currentState = "State" + to_string(states.size());
+                    }
+
+                    index--;
                 }
                 if (isCharInVector(g.variables, i.to[0]))
                 {
+                    // nothing to do
                 }
                 else
                 {
+                    transitions.push_back(Transition(currentState, string(1, i.to[1]), "F"));
                 }
             }
             else
             {
+                index = 0;
                 while (index < i.to.size() - 1)
                 {
+                    if (isCharInVector(g.variables, i.to[index + 1]))
+                    {
+                        transitions.push_back(Transition(currentState, string(1, i.to[index]), string(1, i.to[index + 1])));
+                        currentState = string(1, i.to[index + 1]);
+                    }
+                    else
+                    {
+                        transitions.push_back(Transition(currentState, string(1, i.to[index]), "State" + to_string(states.size() + 1)));
+                        states.push_back("State" + to_string(states.size() + 1));
+                        currentState = "State" + to_string(states.size());
+                    }
+
+                    index++;
                 }
                 if (isCharInVector(g.variables, i.to[i.to.size() - 1]))
                 {
+                    // nothing to do
                 }
                 else
                 {
+                    transitions.push_back(Transition(currentState, string(1, i.to[i.to.size() - 2]), "F"));
                 }
             }
         }
     }
-    return NFA();
+    return NFA(alphabets, states, transitions, start, finalStates);
+}
+
+// This will remove all landa Transitions and convert nfa with landa transition to nfa without landa transition
+NFA noLanda(NFA nfa)
+{
+    vector<string> finalStates;
+
+    finalStates.push_back("F");
+    for (Transition i : nfa.transitions)
+    {
+
+        if (i.by == "e")
+        {
+            if (i.to == "F")
+            {
+                finalStates.push_back(i.from);
+            }
+        }
+    }
+    // this method is not finnished yet next commit it will be completed
+    return NFA(nfa.alphabets, nfa.states, nfa.transitions, nfa.start, finalStates);
 }
 
 DFA NFAtoDFA(NFA f)
@@ -253,10 +321,23 @@ int main()
                 string to;
                 cin >> temp; // ignore '->' sign
                 cin >> to;
+
+                if (to.size() == 1 && static_cast<unsigned char>(to[0]) == 0xEE)
+                {
+                    to = "e"; // Normalize to simple 'e' for consistent handling
+                }
+
                 rules.push_back(Rule(from, to));
                 getline(cin, temp); // ignore \n
             }
             Grammar grammar(start, alphabets, variables, rules);
+            NFA nfa = RGtoNFA(grammar);
+            NFA nfa2 = noLanda(nfa);
+
+            for (string i : nfa2.finalStates)
+            {
+                cout << i << endl;
+            }
         }
     }
 }

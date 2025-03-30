@@ -3,6 +3,9 @@
     "files.associations": {
         "iosfwd": "cpp",
         "algorithm": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "string": "cpp",
+        "ostream": "cpp",
+        "iostream": "cpp"
     }
 }
