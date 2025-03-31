@@ -3,6 +3,9 @@
 #include <sstream>
 #include <string>
 #include <algorithm>
+#include <cmath>
+#include <unordered_set>
+#include <queue>
 
 using namespace std;
 
@@ -90,15 +93,14 @@ public:
 
     NFA() = default;
     NFA(vector<char> a, vector<string> s, vector<Transition> t, string start, vector<string> f)
-        : alphabets(a), states(s), transitions(t), finalStates(f)
+        : alphabets(a), states(s), transitions(t), start(start), finalStates(f)
     {
-        start = start;
     }
 };
+
+// this class won't be needed since a DFA can be made by NFA class
 class DFA
 {
-public:
-    DFA() = default;
 };
 
 // converting a regular grammar to a Non-deterministic Finite Automata
@@ -134,6 +136,10 @@ NFA RGtoNFA(Grammar g)
         if (i.to.size() == 1)
         {
             transitions.push_back(Transition(string(1, i.from), string(1, i.to[0]), "F"));
+        }
+        else if (i.to == "epsilon")
+        {
+            transitions.push_back(Transition(string(1, i.from), i.to, "F"));
         }
         else
         {
@@ -199,6 +205,21 @@ NFA RGtoNFA(Grammar g)
     return NFA(alphabets, states, transitions, start, finalStates);
 }
 
+// this method will produce landa closure
+vector<string> getLandaClosure(vector<Transition> transitions, string from)
+{
+    vector<string> landaClosure;
+    landaClosure.push_back(from);
+    for (Transition j : transitions)
+    {
+        if (j.from == from && j.by == "epsilon")
+        {
+            landaClosure.push_back(j.to);
+        }
+    }
+    return landaClosure;
+}
+
 // This will remove all landa Transitions and convert nfa with landa transition to nfa without landa transition
 NFA noLanda(NFA nfa)
 {
@@ -208,7 +229,7 @@ NFA noLanda(NFA nfa)
     for (Transition i : nfa.transitions)
     {
 
-        if (i.by == "e")
+        if (i.by == "epsilon")
         {
             if (i.to == "F")
             {
@@ -216,13 +237,163 @@ NFA noLanda(NFA nfa)
             }
         }
     }
-    // this method is not finnished yet next commit it will be completed
-    return NFA(nfa.alphabets, nfa.states, nfa.transitions, nfa.start, finalStates);
+    // now we should produce delta prime (for deleting landa transitions)
+    vector<Transition> transitions;
+    for (string i : nfa.states)
+    {
+        vector<string> landaClosure = getLandaClosure(nfa.transitions, i);
+        for (Transition j : nfa.transitions)
+        {
+            if (isStringInVector(landaClosure, j.from) && !(j.by == "epsilon"))
+            {
+                transitions.push_back(Transition(i, j.by, j.to));
+            }
+        }
+    }
+    return NFA(nfa.alphabets, nfa.states, transitions, nfa.start, finalStates);
 }
 
-DFA NFAtoDFA(NFA f)
+// This method will convert a NFA with no landa transition to a DFA
+NFA NFAtoDFA(NFA nfa)
 {
-    return DFA();
+    vector<string> states;
+    string start;
+    vector<string> finalStates;
+    vector<vector<string>> powerset;
+    vector<Transition> transitions;
+
+    // 1. Generate all possible subsets (DFA states)
+    int n = nfa.states.size();
+    int numberOfSubsets = pow(2, n);
+
+    // 2. Generate subsets and identify important states
+    for (int i = 1; i < numberOfSubsets; i++)
+    {
+        vector<string> subset;
+        for (int j = 0; j < n; j++)
+        {
+            if (i & (1 << j))
+            {
+                subset.push_back(nfa.states[j]);
+            }
+        }
+        powerset.push_back(subset);
+        string stateName = "q" + to_string(i - 1);
+        states.push_back(stateName);
+
+        // Identify start state (singleton containing NFA's start)
+        if (subset.size() == 1 && subset[0] == nfa.start)
+        {
+            start = stateName;
+        }
+
+        // Mark as final if contains any NFA final state
+        for (const string &fstate : nfa.finalStates)
+        {
+            if (find(subset.begin(), subset.end(), fstate) != subset.end())
+            {
+                finalStates.push_back(stateName);
+                break;
+            }
+        }
+    }
+
+    // 3. Build transition table with BFS from start state
+    unordered_set<string> reachableStates;
+    queue<string> stateQueue;
+    reachableStates.insert(start);
+    stateQueue.push(start);
+
+    while (!stateQueue.empty())
+    {
+        string current = stateQueue.front();
+        stateQueue.pop();
+
+        // Extract current subset index
+        int currentIdx = stoi(current.substr(1));
+        vector<string> currentSubset = powerset[currentIdx];
+
+        for (char symbol : nfa.alphabets)
+        {
+            vector<string> nextState;
+            bool allHaveTransition = true;
+
+            // Check transitions for all subset members
+            for (const string &state : currentSubset)
+            {
+                bool hasTransition = false;
+                for (const Transition &t : nfa.transitions)
+                {
+                    if (t.from == state && t.by[0] == symbol)
+                    {
+                        hasTransition = true;
+                        if (find(nextState.begin(), nextState.end(), t.to) == nextState.end())
+                        {
+                            nextState.push_back(t.to);
+                        }
+                    }
+                }
+                if (!hasTransition)
+                {
+                    allHaveTransition = false;
+                    break;
+                }
+            }
+
+            if (allHaveTransition && !nextState.empty())
+            {
+                // Find corresponding DFA state
+                int nextStateIdx = -1;
+                for (int j = 0; j < powerset.size(); j++)
+                {
+                    if (powerset[j] == nextState)
+                    {
+                        nextStateIdx = j;
+                        break;
+                    }
+                }
+
+                if (nextStateIdx != -1)
+                {
+                    string nextStateName = "q" + to_string(nextStateIdx);
+                    transitions.push_back(Transition(current, string(1, symbol), nextStateName));
+
+                    if (reachableStates.find(nextStateName) == reachableStates.end())
+                    {
+                        reachableStates.insert(nextStateName);
+                        stateQueue.push(nextStateName);
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Filter unreachable states
+    vector<string> newStates;
+    vector<string> newFinalStates;
+    vector<Transition> newTransitions;
+
+    for (const string &state : states)
+    {
+        if (reachableStates.count(state))
+        {
+            newStates.push_back(state);
+            if (find(finalStates.begin(), finalStates.end(), state) != finalStates.end())
+            {
+                newFinalStates.push_back(state);
+            }
+        }
+    }
+
+    for (const Transition &t : transitions)
+    {
+        if (reachableStates.count(t.from) && reachableStates.count(t.to))
+        {
+            newTransitions.push_back(t);
+        }
+    }
+
+    return NFA(nfa.alphabets, newStates, newTransitions, start, newFinalStates);
 }
 
 DFA complementOP(DFA g)
@@ -324,7 +495,7 @@ int main()
 
                 if (to.size() == 1 && static_cast<unsigned char>(to[0]) == 0xEE)
                 {
-                    to = "e"; // Normalize to simple 'e' for consistent handling
+                    to = "epsilon"; // Normalize to simple 'epsilon' for consistent handling
                 }
 
                 rules.push_back(Rule(from, to));
@@ -333,11 +504,22 @@ int main()
             Grammar grammar(start, alphabets, variables, rules);
             NFA nfa = RGtoNFA(grammar);
             NFA nfa2 = noLanda(nfa);
-
-            for (string i : nfa2.finalStates)
+            NFA dfa = NFAtoDFA(nfa2);
+            for (Transition i : dfa.transitions)
             {
-                cout << i << endl;
+                cout << i.from + " " + i.by + " " + i.to << endl;
             }
+            for (string i : dfa.finalStates)
+            {
+                cout << i + " ";
+            }
+            cout << endl;
+            for (string i : dfa.states)
+            {
+                cout << i + " ";
+            }
+            cout << endl
+                 << dfa.start;
         }
     }
 }
