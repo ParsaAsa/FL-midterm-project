@@ -9,6 +9,8 @@
 
 using namespace std;
 
+vector<vector<string>> globalPowerset;
+
 // Class declarations
 
 class Rule
@@ -298,6 +300,7 @@ NFA NFAtoDFA(NFA nfa)
         }
     }
 
+    globalPowerset = powerset;
     // 3. Build transition table with BFS from start state
     unordered_set<string> reachableStates;
     queue<string> stateQueue;
@@ -396,51 +399,171 @@ NFA NFAtoDFA(NFA nfa)
     return NFA(nfa.alphabets, newStates, newTransitions, start, newFinalStates);
 }
 
-DFA complementOP(DFA g)
+bool noSuchTransition(vector<Transition> t, string state, char by)
 {
-    return DFA();
+    for (Transition i : t)
+    {
+        if (i.from == state && i.by == string(1, by))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+NFA complementOP(NFA nfa)
+{
+    // we should only make non-final states final and final states non-final
+
+    // first we make a trap state and if there is a state that has no transition with a specific alphabet
+    // then we add a transition from that state by that alphabet to trap state
+    vector<Transition> transitions;
+    vector<string> states;
+    for (string i : nfa.states)
+    {
+        states.push_back(i);
+    }
+
+    for (Transition i : nfa.transitions)
+    {
+        transitions.push_back(i);
+    }
+    for (string i : nfa.states)
+    {
+        for (char c : nfa.alphabets)
+        {
+            if (!(noSuchTransition(transitions, i, c)))
+            {
+                transitions.push_back(Transition(i, string(1, c), "T"));
+            }
+        }
+    }
+
+    if (nfa.transitions.size() != transitions.size())
+    {
+        states.push_back("T"); // trap state
+    }
+
+    vector<string> finalStates;
+    for (string i : states)
+    {
+        if (!(isStringInVector(nfa.finalStates, i)))
+        {
+            finalStates.push_back(i);
+        }
+    }
+
+    return NFA(nfa.alphabets, states, transitions, nfa.start, finalStates);
 }
 
-DFA unionOP(DFA g1, DFA g2)
+NFA unionOP(vector<NFA> DFAs)
 {
-    return DFA();
+    string start = "q0";
+    vector<string> states;
+    vector<Transition> transitions;
+    vector<string> finalStates;
+
+    states.push_back(start);
+
+    // Track all original final states with their renamed versions
+    unordered_set<string> originalRenamedFinalStates;
+
+    for (int i = 0; i < DFAs.size(); i++)
+    {
+        // Rename states by appending DFA index
+        for (string s : DFAs[i].states)
+        {
+            string newState = s + "_" + to_string(i);
+            states.push_back(newState);
+
+            // Track final states from original DFAs
+            if (isStringInVector(DFAs[i].finalStates, s))
+            {
+                originalRenamedFinalStates.insert(newState);
+            }
+        }
+
+        // Rename transitions
+        for (Transition t : DFAs[i].transitions)
+        {
+            string newFrom = t.from + "_" + to_string(i);
+            string newTo = t.to + "_" + to_string(i);
+            transitions.push_back(Transition(newFrom, t.by, newTo));
+        }
+
+        // Add epsilon transition from new start to each DFA's renamed start
+        string renamedStart = DFAs[i].start + "_" + to_string(i);
+        transitions.push_back(Transition(start, "epsilon", renamedStart));
+    }
+
+    // Create NFA with epsilon transitions
+    NFA nfaUnion(DFAs[0].alphabets, states, transitions, start, vector<string>());
+
+    // Remove epsilon transitions
+    NFA nfaNoLanda = noLanda(nfaUnion);
+
+    // Convert to DFA
+    NFA dfaUnion = NFAtoDFA(nfaNoLanda);
+
+    // Identify final states: Any DFA state containing a renamed original final state
+    vector<string> correctedFinalStates;
+    for (string dfaState : dfaUnion.states)
+    {
+        // Extract the subset of NFA states this DFA state represents
+        // (This depends on your NFAtoDFA implementation)
+        // Example: If dfaState is "q2", and powerset[2] = {"A_0", "B_1"}
+        // Check if any of these are in originalRenamedFinalStates
+        int stateIndex = stoi(dfaState.substr(1)); // Extract index from "qX"
+        vector<string> subset = globalPowerset[stateIndex];
+
+        for (string s : subset)
+        {
+            if (originalRenamedFinalStates.count(s))
+            {
+                correctedFinalStates.push_back(dfaState);
+                break;
+            }
+        }
+    }
+
+    dfaUnion.finalStates = correctedFinalStates;
+
+    return dfaUnion;
 }
 
-DFA intersectionOP(DFA g1, DFA g2)
+NFA intersectionOP(vector<NFA> DFAs)
 {
-    return DFA();
+    return NFA();
 }
 
-DFA operationHandling(string operation, DFA f1, DFA f2)
+NFA operationHandling(string operation, vector<NFA> DFAs)
 {
     if (operation == "Complement")
     {
-        return complementOP(f1);
+        return complementOP(DFAs[0]);
     }
     else if (operation == "Union")
     {
-        return unionOP(f1, f2);
+        return unionOP(DFAs);
     }
     else if (operation == "Intersection")
     {
-        return intersectionOP(f1, f2);
+        return intersectionOP(DFAs);
     }
-    return DFA();
+    return NFA();
 }
 
 int main()
 {
-    int q; // number of testcases
+    vector<NFA> DFAs;
+    int q, trash; // number of testcases
     string temp;
     cin >> q;
     getline(cin, temp); // ignore \n
     for (int i = 0; i < q; i++)
     { // iterate over testcases
-        vector<Grammar> grammars;
-        vector<NFA> NFAs;
-        vector<DFA> DFAs;
         string operation;
-        getline(cin, temp); // testcase number
+        cin >> trash;       // testcase number
+        getline(cin, temp); // ignore \n
         while (true)
         {
             vector<char> alphabets;
@@ -451,6 +574,24 @@ int main()
 
             if (temp == "# Operation")
             {
+                getline(cin, temp);
+                NFA dfa = operationHandling(temp, DFAs);
+                for (Transition i : dfa.transitions)
+                {
+                    cout << i.from + " " + i.by + " " + i.to << endl;
+                }
+                for (string i : dfa.finalStates)
+                {
+                    cout << i + " ";
+                }
+                cout << endl;
+                for (string i : dfa.states)
+                {
+                    cout << i + " ";
+                }
+                cout << endl
+                     << dfa.start;
+                DFAs.clear();
                 break; // end the process of taking Grammars and go to operation phase
             }
             getline(cin, temp); // # Alphabet
@@ -504,22 +645,8 @@ int main()
             Grammar grammar(start, alphabets, variables, rules);
             NFA nfa = RGtoNFA(grammar);
             NFA nfa2 = noLanda(nfa);
-            NFA dfa = NFAtoDFA(nfa2);
-            for (Transition i : dfa.transitions)
-            {
-                cout << i.from + " " + i.by + " " + i.to << endl;
-            }
-            for (string i : dfa.finalStates)
-            {
-                cout << i + " ";
-            }
-            cout << endl;
-            for (string i : dfa.states)
-            {
-                cout << i + " ";
-            }
-            cout << endl
-                 << dfa.start;
+            NFA dfa1 = NFAtoDFA(nfa2);
+            DFAs.push_back(dfa1);
         }
     }
 }

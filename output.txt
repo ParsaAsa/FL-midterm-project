@@ -15,25 +15,24 @@ A b A
 
 2:
 # States
-S A B C F
+S A B C D
 # Alphabet
 a b
 # Start State
 S
 # Final States
-B F
+B D
 # Transitions
-S a S
+S a C
 S b A
 A a B
 A b A
 B a B
 B b A
-S a C
 C a C
-C b F
-F a C
-F b F
+C b D
+D a C
+D b D
 
 3:
 # States
