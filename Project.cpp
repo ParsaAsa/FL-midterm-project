@@ -227,15 +227,21 @@ NFA noLanda(NFA nfa)
 {
     vector<string> finalStates;
 
-    finalStates.push_back("F");
+    for (string i : nfa.finalStates)
+    {
+        finalStates.push_back(i);
+    }
+
     for (Transition i : nfa.transitions)
     {
-
-        if (i.by == "epsilon")
+        for (string j : finalStates)
         {
-            if (i.to == "F")
+            if (i.by == "epsilon")
             {
-                finalStates.push_back(i.from);
+                if (i.to == j)
+                {
+                    finalStates.push_back(i.from);
+                }
             }
         }
     }
@@ -464,9 +470,6 @@ NFA unionOP(vector<NFA> DFAs)
 
     states.push_back(start);
 
-    // Track all original final states with their renamed versions
-    unordered_set<string> originalRenamedFinalStates;
-
     for (int i = 0; i < DFAs.size(); i++)
     {
         // Rename states by appending DFA index
@@ -474,12 +477,11 @@ NFA unionOP(vector<NFA> DFAs)
         {
             string newState = s + "_" + to_string(i);
             states.push_back(newState);
+        }
 
-            // Track final states from original DFAs
-            if (isStringInVector(DFAs[i].finalStates, s))
-            {
-                originalRenamedFinalStates.insert(newState);
-            }
+        for (string f : DFAs[i].finalStates)
+        {
+            finalStates.push_back(f + "_" + to_string(i));
         }
 
         // Rename transitions
@@ -490,44 +492,13 @@ NFA unionOP(vector<NFA> DFAs)
             transitions.push_back(Transition(newFrom, t.by, newTo));
         }
 
-        // Add epsilon transition from new start to each DFA's renamed start
+        // Add landa transition from new start to each DFA's renamed start
         string renamedStart = DFAs[i].start + "_" + to_string(i);
         transitions.push_back(Transition(start, "epsilon", renamedStart));
     }
 
-    // Create NFA with epsilon transitions
-    NFA nfaUnion(DFAs[0].alphabets, states, transitions, start, vector<string>());
-
-    // Remove epsilon transitions
-    NFA nfaNoLanda = noLanda(nfaUnion);
-
-    // Convert to DFA
-    NFA dfaUnion = NFAtoDFA(nfaNoLanda);
-
-    // Identify final states: Any DFA state containing a renamed original final state
-    vector<string> correctedFinalStates;
-    for (string dfaState : dfaUnion.states)
-    {
-        // Extract the subset of NFA states this DFA state represents
-        // (This depends on your NFAtoDFA implementation)
-        // Example: If dfaState is "q2", and powerset[2] = {"A_0", "B_1"}
-        // Check if any of these are in originalRenamedFinalStates
-        int stateIndex = stoi(dfaState.substr(1)); // Extract index from "qX"
-        vector<string> subset = globalPowerset[stateIndex];
-
-        for (string s : subset)
-        {
-            if (originalRenamedFinalStates.count(s))
-            {
-                correctedFinalStates.push_back(dfaState);
-                break;
-            }
-        }
-    }
-
-    dfaUnion.finalStates = correctedFinalStates;
-
-    return dfaUnion;
+    // Create NFA with landa transitions
+    return (NFAtoDFA(noLanda(NFA(DFAs[0].alphabets, states, transitions, start, finalStates))));
 }
 
 NFA intersectionOP(vector<NFA> DFAs)
