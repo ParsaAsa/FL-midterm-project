@@ -6,10 +6,11 @@
 #include <cmath>
 #include <unordered_set>
 #include <queue>
+#include <unordered_map>
 
 using namespace std;
 
-vector<vector<string>> globalPowerset;
+int counter;
 
 // Class declarations
 
@@ -306,7 +307,6 @@ NFA NFAtoDFA(NFA nfa)
         }
     }
 
-    globalPowerset = powerset;
     // 3. Build transition table with BFS from start state
     unordered_set<string> reachableStates;
     queue<string> stateQueue;
@@ -416,49 +416,129 @@ bool noSuchTransition(vector<Transition> t, string state, char by)
     }
     return false;
 }
-NFA complementOP(NFA nfa)
+
+NFA minimize(NFA nfa)
 {
-    // we should only make non-final states final and final states non-final
+    unordered_set<string> liveStates;
+    unordered_map<string, vector<string>> reverseTransitions;
 
-    // first we make a trap state and if there is a state that has no transition with a specific alphabet
-    // then we add a transition from that state by that alphabet to trap state
-    vector<Transition> transitions;
-    vector<string> states;
-    for (string i : nfa.states)
+    // Build reverse transition map
+    for (const Transition &t : nfa.transitions)
     {
-        states.push_back(i);
+        reverseTransitions[t.to].push_back(t.from);
     }
 
-    for (Transition i : nfa.transitions)
+    // Start from final states
+    queue<string> q;
+    for (const string &f : nfa.finalStates)
     {
-        transitions.push_back(i);
+        liveStates.insert(f);
+        q.push(f);
     }
-    for (string i : nfa.states)
+
+    // Reverse BFS to find live states
+    while (!q.empty())
     {
-        for (char c : nfa.alphabets)
+        string current = q.front();
+        q.pop();
+
+        for (const string &prev : reverseTransitions[current])
         {
-            if (!(noSuchTransition(transitions, i, c)))
+            if (!liveStates.count(prev))
             {
-                transitions.push_back(Transition(i, string(1, c), "T"));
+                liveStates.insert(prev);
+                q.push(prev);
             }
         }
     }
 
-    if (nfa.transitions.size() != transitions.size())
-    {
-        states.push_back("T"); // trap state
-    }
+    // Filter transitions, states, and final states
+    vector<string> newStates;
+    vector<Transition> newTransitions;
+    vector<string> newFinalStates;
 
-    vector<string> finalStates;
-    for (string i : states)
+    for (const string &s : nfa.states)
     {
-        if (!(isStringInVector(nfa.finalStates, i)))
+        if (liveStates.count(s))
         {
-            finalStates.push_back(i);
+            newStates.push_back(s);
         }
     }
 
-    return NFA(nfa.alphabets, states, transitions, nfa.start, finalStates);
+    for (const Transition &t : nfa.transitions)
+    {
+        if (liveStates.count(t.from) && liveStates.count(t.to))
+        {
+            newTransitions.push_back(t);
+        }
+    }
+
+    for (const string &f : nfa.finalStates)
+    {
+        if (liveStates.count(f))
+        {
+            newFinalStates.push_back(f);
+        }
+    }
+
+    // If the start state is not live, return empty automaton
+    if (!liveStates.count(nfa.start))
+    {
+        return NFA(nfa.alphabets, {}, {}, nfa.start, {});
+    }
+
+    return NFA(nfa.alphabets, newStates, newTransitions, nfa.start, newFinalStates);
+}
+
+NFA complementOP(NFA nfa)
+{
+    vector<Transition> transitions = nfa.transitions;
+    vector<string> states = nfa.states;
+    unordered_set<string> allStates(states.begin(), states.end());
+
+    string trap = "T" + to_string(counter++);
+    bool trapUsed = false;
+
+    for (const string &state : states)
+    {
+        for (char c : nfa.alphabets)
+        {
+            bool hasTransition = false;
+            for (const Transition &t : transitions)
+            {
+                if (t.from == state && t.by == string(1, c))
+                {
+                    hasTransition = true;
+                    break;
+                }
+            }
+            if (!hasTransition)
+            {
+                transitions.push_back(Transition(state, string(1, c), trap));
+                trapUsed = true;
+            }
+        }
+    }
+
+    if (trapUsed)
+    {
+        for (char c : nfa.alphabets)
+        {
+            transitions.push_back(Transition(trap, string(1, c), trap));
+        }
+        states.push_back(trap);
+    }
+
+    vector<string> finalStates;
+    for (const string &state : states)
+    {
+        if (!isStringInVector(nfa.finalStates, state))
+        {
+            finalStates.push_back(state);
+        }
+    }
+
+    return minimize(NFA(nfa.alphabets, states, transitions, nfa.start, finalStates));
 }
 
 NFA unionOP(vector<NFA> DFAs)
@@ -498,12 +578,18 @@ NFA unionOP(vector<NFA> DFAs)
     }
 
     // Create NFA with landa transitions
-    return (NFAtoDFA(noLanda(NFA(DFAs[0].alphabets, states, transitions, start, finalStates))));
+    return minimize(NFAtoDFA(noLanda(NFA(DFAs[0].alphabets, states, transitions, start, finalStates))));
 }
 
 NFA intersectionOP(vector<NFA> DFAs)
 {
-    return NFA();
+    vector<NFA> comps;
+    for (NFA i : DFAs)
+    {
+        comps.push_back(complementOP(i));
+    }
+
+    return minimize(complementOP(unionOP(comps)));
 }
 
 NFA operationHandling(string operation, vector<NFA> DFAs)
