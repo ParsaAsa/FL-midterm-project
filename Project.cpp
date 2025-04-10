@@ -7,6 +7,9 @@
 #include <unordered_set>
 #include <queue>
 #include <unordered_map>
+#include <fstream>   // for file I/O
+#include <streambuf> // for redirecting streams
+#include <iomanip>
 
 using namespace std;
 
@@ -609,51 +612,124 @@ NFA operationHandling(string operation, vector<NFA> DFAs)
     return NFA();
 }
 
+NFA renameStates(NFA nfa)
+{
+    string start = "S";
+    vector<string> states;
+    vector<string> finalStates;
+    vector<Transition> transitions;
+
+    int charGenerator = 65;
+    for (string i : nfa.states)
+    {
+        if (i == nfa.start)
+        {
+            states.push_back("S");
+        }
+        else
+        {
+            char character = static_cast<char>(charGenerator);
+            states.push_back(string(1, character));
+            charGenerator++;
+        }
+    }
+
+    for (string i : nfa.finalStates)
+    {
+        auto j = find(nfa.states.begin(), nfa.states.end(), i);
+        int index = distance(nfa.states.begin(), j);
+
+        finalStates.push_back(states[index]);
+    }
+
+    for (Transition i : nfa.transitions)
+    {
+        auto a = find(nfa.states.begin(), nfa.states.end(), i.from);
+        int index1 = distance(nfa.states.begin(), a);
+        auto b = find(nfa.states.begin(), nfa.states.end(), i.to);
+        int index2 = distance(nfa.states.begin(), b);
+
+        transitions.push_back(Transition(states[index1], i.by, states[index2]));
+    }
+
+    return NFA(nfa.alphabets, states, transitions, start, finalStates);
+}
+
 int main()
 {
+    ifstream inFile("input1.txt");
+    if (!inFile)
+    {
+        cerr << "Error opening input1 file!" << endl;
+        return 1;
+    }
+
+    ofstream outFile("output1.txt");
+    if (!outFile)
+    {
+        cerr << "Error opening output1 file!" << endl;
+        return 1;
+    }
+
     vector<NFA> DFAs;
-    int q, trash; // number of testcases
+    int q; // number of testcases
+    int testcase;
     string temp;
-    cin >> q;
-    getline(cin, temp); // ignore \n
+    inFile >> q;
+    getline(inFile, temp); // ignore \n
     for (int i = 0; i < q; i++)
     { // iterate over testcases
         string operation;
-        cin >> trash;       // testcase number
-        getline(cin, temp); // ignore \n
+        inFile >> testcase;    // testcase number
+        getline(inFile, temp); // ignore \n
         while (true)
         {
             vector<char> alphabets;
             vector<char> variables;
             char start;
             vector<Rule> rules;
-            getline(cin, temp); // Grammer name(not important) or "# Operation"
+            getline(inFile, temp); // Grammer name(not important) or "# Operation"
 
             if (temp == "# Operation")
             {
-                getline(cin, temp);
-                NFA dfa = operationHandling(temp, DFAs);
-                for (Transition i : dfa.transitions)
-                {
-                    cout << i.from + " " + i.by + " " + i.to << endl;
-                }
-                for (string i : dfa.finalStates)
-                {
-                    cout << i + " ";
-                }
-                cout << endl;
+                getline(inFile, temp);
+                NFA dfa = renameStates(operationHandling(temp, DFAs));
+                outFile << to_string(testcase) + ":" << endl;
+                outFile << "# States" << endl;
                 for (string i : dfa.states)
                 {
-                    cout << i + " ";
+                    outFile << i + " ";
                 }
-                cout << endl
-                     << dfa.start;
+                outFile << endl
+                        << "# Alphabet" << endl;
+                for (char i : dfa.alphabets)
+                {
+                    outFile << string(1, i) + " ";
+                }
+                outFile << endl
+                        << "# Start State" << endl
+                        << dfa.start << endl;
+
+                outFile << "# Final States" << endl;
+                for (string i : dfa.finalStates)
+                {
+                    outFile << i + " ";
+                }
+
+                outFile << endl
+                        << "# Transitions" << endl;
+                for (Transition i : dfa.transitions)
+                {
+                    outFile << i.from + " " + i.by + " " + i.to << endl;
+                }
+                outFile << endl;
+
                 DFAs.clear();
                 break; // end the process of taking Grammars and go to operation phase
             }
-            getline(cin, temp); // # Alphabet
+            getline(inFile, temp); // # Alphabet
 
-            getline(cin, temp); // Read entire line
+            getline(inFile, temp); // Read entire line
 
             istringstream iss(temp); // Create string stream from temp
             char ch;
@@ -662,9 +738,9 @@ int main()
             { // Extract alphabets one by one
                 alphabets.push_back(ch);
             }
-            getline(cin, temp); // # Variables
+            getline(inFile, temp); // # Variables
 
-            getline(cin, temp); // Read entire line
+            getline(inFile, temp); // Read entire line
 
             iss.clear();
             iss.str(temp); // Create string stream from temp
@@ -674,30 +750,30 @@ int main()
                 variables.push_back(ch);
             }
 
-            getline(cin, temp); // # Start
-            cin >> start;
-            getline(cin, temp); // ignore \n
-            getline(cin, temp); // ignore "# Rules"
+            getline(inFile, temp); // # Start
+            inFile >> start;
+            getline(inFile, temp); // ignore \n
+            getline(inFile, temp); // ignore "# Rules"
             while (true)
             {
                 char from;
-                cin >> from;
+                inFile >> from;
                 if (from == '=')
                 {
-                    getline(cin, temp);
+                    getline(inFile, temp);
                     break;
                 }
                 string to;
-                cin >> temp; // ignore '->' sign
-                cin >> to;
+                inFile >> temp; // ignore '->' sign
+                inFile >> to;
 
-                if (to.size() == 1 && static_cast<unsigned char>(to[0]) == 0xEE)
+                if (to.size() == 2 && (static_cast<unsigned char>(to[0]) == 0xEE || static_cast<unsigned char>(to[0]) == 0xCE || static_cast<unsigned char>(to[0]) == 0xB5))
                 {
                     to = "epsilon"; // Normalize to simple 'epsilon' for consistent handling
                 }
 
                 rules.push_back(Rule(from, to));
-                getline(cin, temp); // ignore \n
+                getline(inFile, temp); // ignore \n
             }
             Grammar grammar(start, alphabets, variables, rules);
             NFA nfa = RGtoNFA(grammar);
@@ -706,4 +782,6 @@ int main()
             DFAs.push_back(dfa1);
         }
     }
+    inFile.clear();
+    outFile.clear();
 }
